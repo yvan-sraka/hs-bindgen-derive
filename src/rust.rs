@@ -13,11 +13,18 @@ pub(crate) fn generate(
     // Parse targeted Haskell function signature either from proc macro
     // attributes or either from types from Rust `fn` item (using feature
     // `reflexive` which is enabled by default) ...
-    let mut sig = {
+    let sig = {
         let s = attrs.to_string();
         if cfg!(feature = "reflexive") && s.is_empty() {
             let sig = <haskell::Signature as reflexive::Eval<&syn::ItemFn>>::from(&item_fn);
-            reflexive::warning(&sig);
+            // Warn user about the build-time cost of relying on `reflexive` ...
+            //
+            // n.b. proc-macro diagnostics require nightly `proc_macro_diagnostic` feature
+            // https://github.com/rust-lang/rust/issues/54140
+            warning::warn(&format!(
+                "Implicit Haskell signature declaration could slow down compilation,
+            rather derive it as: #[hs_bindgen({sig})]"
+            ));
             sig
         } else {
             s.parse().unwrap_or_else(|e| panic!("{e}"))
@@ -49,7 +56,7 @@ with function with more than 8 arguments on platforms apart from x86_64 ..."
 
     // Generate C-FFI wrapper of Rust function ...
     let c_fn = format_ident!("__c_{}", sig.fn_name);
-    let c_ret = ret.quote();
+    let c_ret = sig.fn_type.last().unwrap_or(&HsType::Empty).quote();
     let extern_c_wrapper = quote! {
         #[no_mangle] // Mangling makes symbol names more difficult to predict.
                      // We disable it to ensure that the resulting symbol is really `#c_fn`.
@@ -60,6 +67,7 @@ with function with more than 8 arguments on platforms apart from x86_64 ..."
         }
     };
 
+    // DEBUG: println!("{extern_c_wrapper}");
     sig.fn_type.push(HsType::IO(ret));
     (sig, extern_c_wrapper.into())
 }
