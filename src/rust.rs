@@ -39,6 +39,11 @@ with function with more than 8 arguments on platforms apart from x86_64 ..."
         )
     }
 
+    let ret = match sig.fn_type.pop().unwrap_or(HsType::Empty) {
+        HsType::IO(x) => x,
+        x => Box::new(x),
+    };
+
     // Iterate through function argument types ...
     let mut c_fn_args = quote! {};
     let mut rust_fn_values = quote! {};
@@ -63,5 +68,6 @@ with function with more than 8 arguments on platforms apart from x86_64 ..."
     };
 
     // DEBUG: println!("{extern_c_wrapper}");
+    sig.fn_type.push(HsType::IO(ret));
     (sig, extern_c_wrapper.into())
 }
